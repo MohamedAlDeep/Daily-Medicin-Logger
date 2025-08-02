@@ -7,8 +7,34 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+
 import { BarChart, TrendingUp, TrendingDown, Users, Pill, Calendar, Download } from "lucide-react"
 import Link from "next/link"
+// CSV export utility
+function arrayToCSV(data: any[], columns: string[]): string {
+  const header = columns.join(",")
+  const rows = data.map(row =>
+    columns.map(col => {
+      let val = row[col]
+      if (val === undefined || val === null) val = ''
+      // Escape quotes
+      return `"${String(val).replace(/"/g, '""')}"`
+    }).join(",")
+  )
+  return [header, ...rows].join("\r\n")
+}
+
+function downloadCSV(filename: string, csv: string) {
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 
 
 // Load real data from localStorage
@@ -133,7 +159,24 @@ export default function ReportsPage() {
                 <SelectItem value="year">This Year</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline">
+            <Button
+              variant="outline"
+              onClick={() => {
+                // Export logs as CSV
+                const columns = [
+                  'id',
+                  'patientName',
+                  'medicationName',
+                  'scheduledTime',
+                  'actualTime',
+                  'status',
+                  'date',
+                  'notes',
+                ]
+                const csv = arrayToCSV(logs, columns)
+                downloadCSV('medication-logs.csv', csv)
+              }}
+            >
               <Download className="h-4 w-4 mr-2" />
               Export
             </Button>
