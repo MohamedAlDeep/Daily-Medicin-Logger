@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
+import { useLocalStorage } from 'usehooks-ts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -9,40 +10,92 @@ import { Progress } from "@/components/ui/progress"
 import { BarChart, TrendingUp, TrendingDown, Users, Pill, Calendar, Download } from "lucide-react"
 import Link from "next/link"
 
-// Mock data for reports
-const adherenceData = [
-  { patient: "John Smith", totalMeds: 60, taken: 55, missed: 5, adherenceRate: 92 },
-  { patient: "Mary Johnson", totalMeds: 45, taken: 42, missed: 3, adherenceRate: 93 },
-  { patient: "Robert Davis", totalMeds: 30, taken: 25, missed: 5, adherenceRate: 83 },
-  { patient: "Sarah Wilson", totalMeds: 40, taken: 38, missed: 2, adherenceRate: 95 },
-  { patient: "Lisa Brown", totalMeds: 35, taken: 30, missed: 5, adherenceRate: 86 },
-]
 
-const medicationStats = [
-  { medication: "Lisinopril", prescribed: 15, adherenceRate: 89 },
-  { medication: "Metformin", prescribed: 12, adherenceRate: 94 },
-  { medication: "Atorvastatin", prescribed: 10, adherenceRate: 87 },
-  { medication: "Amlodipine", prescribed: 8, adherenceRate: 91 },
-  { medication: "Levothyroxine", prescribed: 6, adherenceRate: 96 },
-]
-
-const weeklyTrends = [
-  { week: "Week 1", adherenceRate: 88 },
-  { week: "Week 2", adherenceRate: 91 },
-  { week: "Week 3", adherenceRate: 89 },
-  { week: "Week 4", adherenceRate: 93 },
-]
+// Load real data from localStorage
+function getWeekNumber(dateString: string) {
+  const d = new Date(dateString)
+  const onejan = new Date(d.getFullYear(), 0, 1)
+  return Math.ceil((((d as any) - (onejan as any)) / 86400000 + onejan.getDay() + 1) / 7)
+}
 
 export default function ReportsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("month")
   const [selectedPatient, setSelectedPatient] = useState("all")
 
-  const overallStats = {
-    totalPatients: adherenceData.length,
-    averageAdherence: Math.round(adherenceData.reduce((sum, p) => sum + p.adherenceRate, 0) / adherenceData.length),
-    totalMedications: adherenceData.reduce((sum, p) => sum + p.totalMeds, 0),
-    totalMissed: adherenceData.reduce((sum, p) => sum + p.missed, 0),
-  }
+  const [patients] = useLocalStorage<any[]>('patients', [])
+  const [medications] = useLocalStorage<any[]>('medications', [])
+  const [logs] = useLocalStorage<any[]>('logs', [])
+
+  // Per-patient adherence
+  const adherenceData = useMemo(() => {
+    return patients.map((patient) => {
+      const patientMeds = medications.filter(med => med.patientId === patient.id)
+      const patientLogs = logs.filter(log => log.patientName === patient.name)
+      const taken = patientLogs.filter(log => log.status === 'taken').length
+      const missed = patientLogs.filter(log => log.status === 'missed').length
+      const totalMeds = patientMeds.length > 0 ? patientMeds.length : taken + missed
+      const adherenceRate = totalMeds > 0 ? Math.round((taken / totalMeds) * 100) : 0
+      return {
+        patient: patient.name,
+        totalMeds,
+        taken,
+        missed,
+        adherenceRate,
+      }
+    })
+  }, [patients, medications, logs])
+
+  // Medication performance
+  const medicationStats = useMemo(() => {
+    const medMap: Record<string, { prescribed: number; taken: number; adherenceRate: number }> = {}
+    medications.forEach(med => {
+      if (!medMap[med.medicationName]) {
+        medMap[med.medicationName] = { prescribed: 0, taken: 0, adherenceRate: 0 }
+      }
+      medMap[med.medicationName].prescribed++
+    })
+    logs.forEach(log => {
+      if (log.status === 'taken' && medMap[log.medicationName]) {
+        medMap[log.medicationName].taken++
+      }
+    })
+    Object.keys(medMap).forEach(name => {
+      const m = medMap[name]
+      m.adherenceRate = m.prescribed > 0 ? Math.round((m.taken / m.prescribed) * 100) : 0
+    })
+    return Object.entries(medMap).map(([medication, data]) => ({ medication, ...data }))
+  }, [medications, logs])
+
+  // Weekly trends (last 4 weeks)
+  const weeklyTrends = useMemo(() => {
+    const weekMap: Record<string, { week: string; taken: number; total: number }> = {}
+    logs.forEach(log => {
+      const weekNum = getWeekNumber(log.date)
+      const year = new Date(log.date).getFullYear()
+      const key = `${year}-W${weekNum}`
+      if (!weekMap[key]) weekMap[key] = { week: key, taken: 0, total: 0 }
+      if (log.status === 'taken') weekMap[key].taken++
+      weekMap[key].total++
+    })
+    const weeks = Object.values(weekMap)
+      .sort((a, b) => (a.week < b.week ? 1 : -1))
+      .slice(0, 4)
+      .reverse()
+    return weeks.map(w => ({
+      week: w.week,
+      adherenceRate: w.total > 0 ? Math.round((w.taken / w.total) * 100) : 0,
+    }))
+  }, [logs])
+
+  // Overall stats
+  const overallStats = useMemo(() => {
+    const totalPatients = patients.length
+    const totalMedications = medications.length
+    const totalMissed = logs.filter(log => log.status === 'missed').length
+    const adherenceRates = adherenceData.map(p => p.adherenceRate)
+    const averageAdherence = adherenceRates.length > 0 ? Math.round(adherenceRates.reduce((a, b) => a + b, 0) / adherenceRates.length) : 0
+    return { totalPatients, totalMedications, totalMissed, averageAdherence }
+  }, [patients, medications, logs, adherenceData])
 
   return (
     <div className="min-h-screen bg-gray-50">

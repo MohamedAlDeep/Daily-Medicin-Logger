@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useLocalStorage } from 'usehooks-ts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,83 +23,47 @@ import { Search, Clock, CheckCircle, XCircle, AlertCircle, CalendarIcon } from "
 import { format } from "date-fns"
 import Link from "next/link"
 
-// Mock data
-const mockMedications = [
-  {
-    id: 1,
-    patientId: 1,
-    patientName: "John Smith",
-    medicationName: "Lisinopril",
-    dosage: "10mg",
-    frequency: "Once daily",
-    scheduledTime: "08:00",
-    instructions: "Take with food",
-  },
-  {
-    id: 2,
-    patientId: 1,
-    patientName: "John Smith",
-    medicationName: "Metformin",
-    dosage: "500mg",
-    frequency: "Twice daily",
-    scheduledTime: "08:00",
-    instructions: "Take with meals",
-  },
-  {
-    id: 3,
-    patientId: 2,
-    patientName: "Mary Johnson",
-    medicationName: "Atorvastatin",
-    dosage: "20mg",
-    frequency: "Once daily",
-    scheduledTime: "20:00",
-    instructions: "Take at bedtime",
-  },
-]
+// Types
+type Medication = {
+  id: number
+  patientId: number
+  patientName: string
+  medicationName: string
+  dosage: string
+  frequency: string
+  route?: string
+  scheduledTime?: string
+  instructions?: string
+}
+type Log = {
+  id: number
+  medicationId: number
+  patientName: string
+  medicationName: string
+  scheduledTime?: string
+  actualTime?: string | null
+  status: string
+  date: string
+  notes?: string
+}
 
-const mockLogs = [
-  {
-    id: 1,
-    medicationId: 1,
-    patientName: "John Smith",
-    medicationName: "Lisinopril 10mg",
-    scheduledTime: "08:00",
-    actualTime: "08:15",
-    status: "taken",
-    date: "2024-01-20",
-    notes: "Taken with breakfast",
-  },
-  {
-    id: 2,
-    medicationId: 2,
-    patientName: "John Smith",
-    medicationName: "Metformin 500mg",
-    scheduledTime: "08:00",
-    actualTime: null,
-    status: "missed",
-    date: "2024-01-20",
-    notes: "Patient forgot morning dose",
-  },
-  {
-    id: 3,
-    medicationId: 3,
-    patientName: "Mary Johnson",
-    medicationName: "Atorvastatin 20mg",
-    scheduledTime: "20:00",
-    actualTime: "20:30",
-    status: "taken",
-    date: "2024-01-19",
-    notes: "Taken as prescribed",
-  },
-]
+const mockMedications: Medication[] = []
+
+// Logs will be loaded from localStorage
+
 
 export default function DailyLogPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
-  const [medications, setMedications] = useState(mockMedications)
-  const [logs, setLogs] = useState(mockLogs)
+  const [medicationsLS] = useLocalStorage<Medication[]>('medications', [])
+  const [medications, setMedications] = useState<Medication[]>(medicationsLS)
+  const [logsLS, setLogsLS] = useLocalStorage<Log[]>('logs', [])
+  // Keep medications in sync with localStorage
+  useEffect(() => {
+    setMedications(medicationsLS)
+  }, [medicationsLS])
   const [searchTerm, setSearchTerm] = useState("")
   const [isLogDialogOpen, setIsLogDialogOpen] = useState(false)
-  const [selectedMedication, setSelectedMedication] = useState<any>(null)
+  const [selectedMedication, setSelectedMedication] = useState<Medication | null>(null)
   const [logData, setLogData] = useState({
     status: "",
     actualTime: "",
@@ -106,16 +71,17 @@ export default function DailyLogPage() {
   })
 
   const filteredMedications = medications.filter(
-    (med) =>
+    (med: Medication) =>
       med.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       med.medicationName.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  const todaysLogs = logs.filter((log) => log.date === format(selectedDate, "yyyy-MM-dd"))
+  const todaysLogs = logsLS.filter((log: Log) => log.date === format(selectedDate, "yyyy-MM-dd"))
 
   const handleLogMedication = () => {
+    if (!selectedMedication) return;
     const newLog = {
-      id: logs.length + 1,
+      id: logsLS.length > 0 ? Math.max(...logsLS.map((l) => l.id || 0)) + 1 : 1,
       medicationId: selectedMedication.id,
       patientName: selectedMedication.patientName,
       medicationName: `${selectedMedication.medicationName} ${selectedMedication.dosage}`,
@@ -126,7 +92,7 @@ export default function DailyLogPage() {
       notes: logData.notes,
     }
 
-    setLogs([...logs, newLog])
+    setLogsLS([...logsLS, newLog])
     setLogData({ status: "", actualTime: "", notes: "" })
     setSelectedMedication(null)
     setIsLogDialogOpen(false)
@@ -146,12 +112,13 @@ export default function DailyLogPage() {
   }
 
   const getStatusBadge = (status: string) => {
-    const variants = {
+    const variants: Record<string, "default" | "destructive" | "secondary" | "outline"> = {
       taken: "default",
       missed: "destructive",
       delayed: "secondary",
     }
-    return <Badge variant={variants[status as keyof typeof variants] || "outline"}>{status}</Badge>
+    const variant = variants[status] || "outline"
+    return <Badge variant={variant}>{status}</Badge>
   }
 
   return (
@@ -219,8 +186,8 @@ export default function DailyLogPage() {
               </div>
 
               <div className="space-y-3">
-                {filteredMedications.map((medication) => {
-                  const existingLog = todaysLogs.find((log) => log.medicationId === medication.id)
+                {filteredMedications.map((medication: Medication) => {
+                  const existingLog = todaysLogs.find((log: Log) => log.medicationId === medication.id)
 
                   return (
                     <div key={medication.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -271,7 +238,7 @@ export default function DailyLogPage() {
                     <p className="text-gray-600">No medications logged for this date</p>
                   </div>
                 ) : (
-                  todaysLogs.map((log) => (
+                  todaysLogs.map((log: Log) => (
                     <div key={log.id} className="p-3 border rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center space-x-2">

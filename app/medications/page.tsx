@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useLocalStorage } from 'usehooks-ts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,63 +21,36 @@ import { Textarea } from "@/components/ui/textarea"
 import { Search, Plus, Pill, Clock, User, Edit, Trash2 } from "lucide-react"
 import Link from "next/link"
 
-// Mock medication data
-const mockMedications = [
-  {
-    id: 1,
-    patientId: 1,
-    patientName: "John Smith",
-    medicationName: "Lisinopril",
-    dosage: "10mg",
-    frequency: "Once daily",
-    route: "Oral",
-    startDate: "2024-01-01",
-    endDate: "2024-12-31",
-    prescribedBy: "Dr. Johnson",
-    instructions: "Take with food in the morning",
-    sideEffects: "Dizziness, dry cough",
-    isActive: true,
-  },
-  {
-    id: 2,
-    patientId: 1,
-    patientName: "John Smith",
-    medicationName: "Metformin",
-    dosage: "500mg",
-    frequency: "Twice daily",
-    route: "Oral",
-    startDate: "2024-01-01",
-    endDate: "2024-12-31",
-    prescribedBy: "Dr. Johnson",
-    instructions: "Take with meals",
-    sideEffects: "Nausea, stomach upset",
-    isActive: true,
-  },
-  {
-    id: 3,
-    patientId: 2,
-    patientName: "Mary Johnson",
-    medicationName: "Atorvastatin",
-    dosage: "20mg",
-    frequency: "Once daily",
-    route: "Oral",
-    startDate: "2024-01-01",
-    endDate: "2024-12-31",
-    prescribedBy: "Dr. Smith",
-    instructions: "Take at bedtime",
-    sideEffects: "Muscle pain, liver problems",
-    isActive: true,
-  },
-]
+// Types
+type Medication = {
+  id: number
+  patientId: number
+  patientName: string
+  medicationName: string
+  dosage: string
+  frequency: string
+  route: string
+  startDate: string
+  endDate: string
+  prescribedBy: string
+  instructions: string
+  sideEffects: string
+  isActive: boolean
+}
+type Patient = {
+  id: number
+  name: string
+}
 
-const mockPatients = [
-  { id: 1, name: "John Smith" },
-  { id: 2, name: "Mary Johnson" },
-  { id: 3, name: "Robert Davis" },
-]
+// Mock medication data
+const mockMedications: Medication[] = []
+// Remove mockPatients, use real patients from localStorage
 
 export default function MedicationsPage() {
-  const [medications, setMedications] = useState(mockMedications)
+  const [medicationsLS, setMedicationsLS] = useLocalStorage('medications', mockMedications)
+  const [medications, setMedications] = useState(medicationsLS)
+  const [patientsLS] = useLocalStorage<Patient[]>('patients', [])
+  const [logsLS, setLogsLS] = useLocalStorage<any[]>('logs', [])
   const [searchTerm, setSearchTerm] = useState("")
   const [filterPatient, setFilterPatient] = useState("all")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -93,6 +67,11 @@ export default function MedicationsPage() {
     sideEffects: "",
   })
 
+  // Sync medications state with localStorage on mount and whenever medicationsLS changes
+  useEffect(() => {
+    setMedications(medicationsLS)
+  }, [medicationsLS])
+
   const filteredMedications = medications.filter((med) => {
     const matchesSearch =
       med.medicationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -102,15 +81,34 @@ export default function MedicationsPage() {
   })
 
   const handleAddMedication = () => {
-    const selectedPatient = mockPatients.find((p) => p.id.toString() === newMedication.patientId)
+    const selectedPatient = patientsLS.find((p) => p.id.toString() === newMedication.patientId)
     const medication = {
-      id: medications.length + 1,
+      id: medications.length > 0 ? Math.max(...medications.map((m) => m.id)) + 1 : 1,
       ...newMedication,
       patientId: Number.parseInt(newMedication.patientId),
       patientName: selectedPatient?.name || "",
       isActive: true,
     }
-    setMedications([...medications, medication])
+    const updatedMedications = [...medications, medication]
+    setMedicationsLS(updatedMedications)
+
+    // Add a log entry for this medication
+    const logEntry = {
+      id: logsLS.length > 0 ? Math.max(...logsLS.map((l) => l.id || 0)) + 1 : 1,
+      medicationId: medication.id,
+      patientId: medication.patientId,
+      patientName: medication.patientName,
+      medicationName: medication.medicationName,
+      dosage: medication.dosage,
+      frequency: medication.frequency,
+      route: medication.route,
+      prescribedBy: medication.prescribedBy,
+      date: new Date().toISOString().split('T')[0],
+      status: 'added',
+      notes: '',
+    }
+    setLogsLS([...logsLS, logEntry])
+
     setNewMedication({
       patientId: "",
       medicationName: "",
@@ -127,7 +125,8 @@ export default function MedicationsPage() {
   }
 
   const handleDiscontinue = (id: number) => {
-    setMedications(medications.map((med) => (med.id === id ? { ...med, isActive: false } : med)))
+    const updatedMedications = medications.map((med) => (med.id === id ? { ...med, isActive: false } : med))
+    setMedicationsLS(updatedMedications)
   }
 
   return (
@@ -174,7 +173,7 @@ export default function MedicationsPage() {
                       <SelectValue placeholder="Select patient" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockPatients.map((patient) => (
+                      {patientsLS.map((patient) => (
                         <SelectItem key={patient.id} value={patient.id.toString()}>
                           {patient.name}
                         </SelectItem>
@@ -299,7 +298,7 @@ export default function MedicationsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Patients</SelectItem>
-              {mockPatients.map((patient) => (
+              {patientsLS.map((patient) => (
                 <SelectItem key={patient.id} value={patient.id.toString()}>
                   {patient.name}
                 </SelectItem>

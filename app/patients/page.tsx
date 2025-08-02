@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,56 +19,18 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Plus, User, Calendar, Phone, Mail, Edit, Trash2 } from "lucide-react"
 import Link from "next/link"
-
+import {useLocalStorage} from 'usehooks-ts'
 // Mock patient data
-const mockPatients = [
-  {
-    id: 1,
-    name: "John Smith",
-    age: 65,
-    gender: "Male",
-    phone: "(555) 123-4567",
-    email: "john.smith@email.com",
-    dateOfBirth: "1958-03-15",
-    address: "123 Main St, City, State 12345",
-    emergencyContact: "Jane Smith - (555) 987-6543",
-    medicalConditions: ["Hypertension", "Diabetes Type 2"],
-    activeMedications: 4,
-    lastVisit: "2024-01-15",
-  },
-  {
-    id: 2,
-    name: "Mary Johnson",
-    age: 72,
-    gender: "Female",
-    phone: "(555) 234-5678",
-    email: "mary.johnson@email.com",
-    dateOfBirth: "1951-08-22",
-    address: "456 Oak Ave, City, State 12345",
-    emergencyContact: "Robert Johnson - (555) 876-5432",
-    medicalConditions: ["Diabetes Type 2", "High Cholesterol"],
-    activeMedications: 3,
-    lastVisit: "2024-01-12",
-  },
-  {
-    id: 3,
-    name: "Robert Davis",
-    age: 58,
-    gender: "Male",
-    phone: "(555) 345-6789",
-    email: "robert.davis@email.com",
-    dateOfBirth: "1965-11-08",
-    address: "789 Pine St, City, State 12345",
-    emergencyContact: "Linda Davis - (555) 765-4321",
-    medicalConditions: ["High Cholesterol", "Hypertension"],
-    activeMedications: 2,
-    lastVisit: "2024-01-10",
-  },
+const mockPatients: any = [
+  
 ]
 
+
 export default function PatientsPage() {
-  const [patients, setPatients] = useState(mockPatients)
+  const [patientsLS, setPatientsLS] = useLocalStorage('patients', mockPatients)
+  const [patients, setPatients] = useState(patientsLS)
   const [searchTerm, setSearchTerm] = useState("")
+  const [value, setValue, removeValue] = useLocalStorage('test-key', 0)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [newPatient, setNewPatient] = useState({
     name: "",
@@ -82,6 +44,11 @@ export default function PatientsPage() {
     medicalConditions: "",
   })
 
+  // Sync patients state with localStorage on mount and whenever patientsLS changes
+  useEffect(() => {
+    setPatients(patientsLS)
+  }, [patientsLS])
+
   const filteredPatients = patients.filter(
     (patient) =>
       patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -90,14 +57,15 @@ export default function PatientsPage() {
 
   const handleAddPatient = () => {
     const patient = {
-      id: patients.length + 1,
+      id: patients.length > 0 ? Math.max(...patients.map((p) => p.id)) + 1 : 1,
       ...newPatient,
       age: Number.parseInt(newPatient.age),
       medicalConditions: newPatient.medicalConditions.split(",").map((c) => c.trim()),
       activeMedications: 0,
       lastVisit: new Date().toISOString().split("T")[0],
     }
-    setPatients([...patients, patient])
+    const updatedPatients = [...patients, patient]
+    setPatientsLS(updatedPatients)
     setNewPatient({
       name: "",
       age: "",
@@ -113,11 +81,14 @@ export default function PatientsPage() {
   }
 
   const handleDeletePatient = (id: number) => {
-    setPatients(patients.filter((patient) => patient.id !== id))
+    const updatedPatients = patients.filter((patient) => patient.id !== id)
+    setPatientsLS(updatedPatients)
   }
 
   return (
+    
     <div className="min-h-screen bg-gray-50">
+     
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">

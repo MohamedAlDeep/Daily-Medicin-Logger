@@ -4,30 +4,72 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Calendar, Clock, Users, Pill, TrendingUp, AlertTriangle } from "lucide-react"
 import Link from "next/link"
+import { useLocalStorage } from 'usehooks-ts'
+import { useMemo } from 'react'
 
-// Mock data
-const mockStats = {
-  totalPatients: 24,
-  medicationsToday: 156,
-  completedToday: 142,
-  missedToday: 14,
-  adherenceRate: 91,
+// Load data from localStorage
+function getTimeString(date: Date) {
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-const recentLogs = [
-  { id: 1, patient: "John Smith", medication: "Lisinopril 10mg", time: "08:30 AM", status: "taken" },
-  { id: 2, patient: "Mary Johnson", medication: "Metformin 500mg", time: "08:45 AM", status: "taken" },
-  { id: 3, patient: "Robert Davis", medication: "Atorvastatin 20mg", time: "09:00 AM", status: "missed" },
-  { id: 4, patient: "Sarah Wilson", medication: "Amlodipine 5mg", time: "09:15 AM", status: "taken" },
-]
-
-const upcomingMedications = [
-  { id: 1, patient: "John Smith", medication: "Metoprolol 25mg", scheduledTime: "12:00 PM" },
-  { id: 2, patient: "Mary Johnson", medication: "Metformin 500mg", scheduledTime: "12:30 PM" },
-  { id: 3, patient: "Lisa Brown", medication: "Levothyroxine 50mcg", scheduledTime: "01:00 PM" },
-]
-
 export default function Dashboard() {
+  const [patients] = useLocalStorage<any[]>('patients', [])
+  const [medications] = useLocalStorage<any[]>('medications', [])
+  const [logs] = useLocalStorage<any[]>('logs', [])
+
+  // Calculate statistics
+  const today = new Date().toISOString().split('T')[0]
+  const stats = useMemo(() => {
+    const totalPatients = patients.length
+    const medsToday = medications.filter(med => {
+      // If medication has a startDate and endDate, check if today is in range
+      if (med.startDate && med.endDate) {
+        return med.startDate <= today && med.endDate >= today
+      }
+      return true
+    })
+    const medicationsToday = medsToday.length
+    const logsToday = logs.filter(log => log.date === today)
+    const completedToday = logsToday.filter(log => log.status === 'taken').length
+    const missedToday = logsToday.filter(log => log.status === 'missed').length
+    const adherenceRate = medicationsToday > 0 ? Math.round((completedToday / medicationsToday) * 100) : 0
+    return {
+      totalPatients,
+      medicationsToday,
+      completedToday,
+      missedToday,
+      adherenceRate,
+    }
+  }, [patients, medications, logs, today])
+
+  // Recent logs (last 4)
+  const recentLogs = useMemo(() => {
+    return logs
+      .slice()
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+      .slice(0, 4)
+      .map(log => ({
+        id: log.id,
+        patient: log.patientName,
+        medication: log.medicationName,
+        time: log.actualTime || '',
+        status: log.status,
+      }))
+  }, [logs])
+
+  // Upcoming medications (for today, with scheduledTime)
+  const upcomingMedications = useMemo(() => {
+    return medications
+      .filter(med => med.scheduledTime && (!med.endDate || med.endDate >= today) && (!med.startDate || med.startDate <= today))
+      .map(med => ({
+        id: med.id,
+        patient: med.patientName,
+        medication: `${med.medicationName} ${med.dosage || ''}`.trim(),
+        scheduledTime: med.scheduledTime,
+      }))
+      .slice(0, 4)
+  }, [medications, today])
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200">
@@ -69,7 +111,7 @@ export default function Dashboard() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{mockStats.totalPatients}</div>
+              <div className="text-2xl font-bold">{stats.totalPatients}</div>
             </CardContent>
           </Card>
 
@@ -79,7 +121,7 @@ export default function Dashboard() {
               <Pill className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{mockStats.medicationsToday}</div>
+              <div className="text-2xl font-bold">{stats.medicationsToday}</div>
             </CardContent>
           </Card>
 
@@ -89,7 +131,7 @@ export default function Dashboard() {
               <TrendingUp className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{mockStats.completedToday}</div>
+              <div className="text-2xl font-bold text-green-600">{stats.completedToday}</div>
             </CardContent>
           </Card>
 
@@ -99,7 +141,7 @@ export default function Dashboard() {
               <AlertTriangle className="h-4 w-4 text-red-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">{mockStats.missedToday}</div>
+              <div className="text-2xl font-bold text-red-600">{stats.missedToday}</div>
             </CardContent>
           </Card>
 
@@ -109,7 +151,7 @@ export default function Dashboard() {
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{mockStats.adherenceRate}%</div>
+              <div className="text-2xl font-bold">{stats.adherenceRate}%</div>
             </CardContent>
           </Card>
         </div>
